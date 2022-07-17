@@ -51,6 +51,10 @@ let initialLibraryState = { Catalog = []; Circulations = [] }
 
 let addBookToEmptyCatalogState state info librarian now =
     { state with Catalog = [{ Id = 0; Info = info; AddedBy = librarian; AddedAt = now }] }
+
+let addNewBookToExistingCatalogState state info librarian now =
+    let newCatalogEntry = { Id = 0; Info = info; AddedBy = librarian; AddedAt = now }
+    { state with Catalog = newCatalogEntry :: state.Catalog }
     
 let addBookWorkflow : AddBookWorkflow =
     fun state librarian now info ->
@@ -59,11 +63,11 @@ let addBookWorkflow : AddBookWorkflow =
         | [] ->
             addBookToEmptyCatalogState state info librarian now
         | books ->
-           let alreadyPresentBooks =
+           let booksWithSameIsbn =
                books |> List.filter (fun x -> x.Info.Isbn = info.Isbn)
-           match alreadyPresentBooks with
+           match booksWithSameIsbn with
            | [] ->
-                addBookToEmptyCatalogState state info librarian now
+                addNewBookToExistingCatalogState state info librarian now
            | books' ->
                 let newestId = books' |> List.map (fun x -> x.Id) |> List.max
                 let nextId = newestId+1
@@ -75,7 +79,7 @@ let checkoutByIsbnWorkflow : CheckoutByIsbnWorkflow =
         let catalog = state.Catalog
         let circulations = state.Circulations
         let matchingBooksInCatalog =
-            catalog |> List.where (fun x -> x.Info.Isbn = requestForCheckout)
+            catalog |> List.filter (fun x -> x.Info.Isbn = requestForCheckout)
         
         let maybeAvailableBookIds : BookId list option =
             match matchingBooksInCatalog with
@@ -99,9 +103,9 @@ let checkoutByBookIdWorkflow : CheckoutByBookIdWorkflow =
     fun state requestForCheckout borrower now ->
         let catalog = state.Catalog
         let circulations = state.Circulations
-        let matchingBooksInCatalog =
+        let matchingBookIdsInCatalog =
             catalog |> List.filter (fun x -> x.Id = requestForCheckout) |> List.map (fun x -> x.Id)
-        match matchingBooksInCatalog with
+        match matchingBookIdsInCatalog with
         | [] -> state
         | bookIdsMatchingRequest ->
             let checkedOutBookIds =
@@ -121,7 +125,7 @@ let returnBookWorkflow : ReturnBookWorkflow =
     fun state bookId borrower now ->
         let circulations = state.Circulations
         let returnableCirculation = circulations |> areCheckedOut |> List.find (fun x -> x.BookId = bookId)
-        let returnCirculation = { returnableCirculation with ReturnedAt = Some now } // TODO check borrower ...
-        let otherCirculations = circulations |> List.filter (fun x -> x.BookId <> returnCirculation.BookId)
-        { state with Circulations = returnCirculation :: otherCirculations }
+        let returnedCirculation = { returnableCirculation with ReturnedAt = Some now } // TODO check borrower ...
+        let otherCirculations = circulations |> List.filter (fun x -> x.BookId <> returnedCirculation.BookId)
+        { state with Circulations = returnedCirculation :: otherCirculations }
         
